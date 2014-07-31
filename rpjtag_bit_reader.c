@@ -50,6 +50,7 @@ void checkStatusReg()
 	unsigned int NOOP = 0x20000000;
 	unsigned int SYNCWORD = 0xAA995566;
 	unsigned int STATUS_REG = 0x2800E002;
+    int v;
 	
 	syncJTAGs();
 	SelectShiftIR();
@@ -86,23 +87,17 @@ void checkStatusReg()
 	fprintf(stderr,"\nSTAT: ");
 	for(n=0;n<32;n++)
 	{
-			fprintf(stderr,"%d",send_cmd(0,0));
+            v = read_jtag_tdo();
+            send_cmd(0,0);
+			fprintf(stderr,"%d",v);
 	}
 	fprintf(stderr,"\n");
 
-	UpdateState(JTAG_RESET,0);
 }
 
 //remember last device is always the one to send IR bits to first
 void ProgramDevice(int deviceNr, FILE *f)
 {
-	unsigned char tempChar;
-
-	if((parms & 0x01) == 0x01)
-		checkUserId(0);
-
-	if((parms & 0x01) == 0x01) checkStatusReg();
-
 	syncJTAGs();
 	SelectShiftIR();
 
@@ -113,51 +108,49 @@ void ProgramDevice(int deviceNr, FILE *f)
 	send_cmdWord_msb_last(0x05,0,6); //000101
 	send_cmdWord_msb_last(0xFF,1,8); //11111111
 	*/
-	for(x=nDevices;x>0;x--)
-	{
-		if((nDevices-deviceNr)==x)
-		{
-			if((parms & 0x01) == 0x01) fprintf(stderr,"\nDebug %d 0x05: %d, %s",x,device_data[deviceNr].dIRLen,device_data[deviceNr].DeviceName);
-			if((x-1)==0) //To check is MSB in chain is sent with this cmd
-				send_cmdWord_msb_last(0x05,1,device_data[deviceNr].dIRLen);
-			else
-				send_cmdWord_msb_last(0x05,0,device_data[deviceNr].dIRLen);
-		}else{	
-			if((parms & 0x01) == 0x01) fprintf(stderr,"\nDebug %d 0xFF: %d, %s",x,device_data[x].dIRLen,device_data[x].DeviceName);
-			if((x-1)==0) //To check is MSB in chain is sent with this cmd
-				send_cmdWord_msb_last(0xFFFFF,1,device_data[x].dIRLen);//Bypass max, 20bit register
-			else
-				send_cmdWord_msb_last(0xFFFFF,0,device_data[x].dIRLen);//Bypass max, 20bit register
-		}
-	}
 
-	//FPGA in CFG_IN MODE and PROM in BYPASS
+    send_cmdWord_msb_last(0x05,1,IRLEN);
 
-	send_cmd(0,1); //->UPDATE IR
-	send_cmd(0,1); //SELECT SCAN-DR
-	send_cmd(0,0);
-	send_cmd(0,0);
+    // The send_cmdWord routine tags the last bit with TMS, so we are in state Exit1IR
+	send_cmd(0,1); // -> UPDATE IR
+	send_cmd(0,1); // -> SELECT SCAN-DR
+	send_cmd(0,0); // -> CAPTURE DR
+	send_cmd(0,0); // -> SHIFT DR
 
-	//Send leading zero's
-	if((nDevices-deviceChainNr-1)>0)
-		for(n=0;n<(32 - ((nDevices-deviceChainNr-1)%32));n++) send_cmd(0,0);
 
-	int n,bitcount = 0;
-	fprintf(stderr, "\nProgramming device %d/%d, Name: %s ... bitstream length (%d) ",(nDevices-deviceNr),nDevices,device_data[deviceNr].DeviceName,bitfileinfo.Bitstream_Length);
-	for(n = 0; n < bitfileinfo.Bitstream_Length; n++)
-	{
-		tempChar = fgetc(f);
-		if(n < 4 && tempChar != 0xFF)
+	int n;
+    int n_bytes = bitfileinfo.Bitstream_Length; // this is in bytes
+    unsigned char *buffer;
+    buffer = (unsigned char *)malloc(n_bytes);
+    fread(buffer, n_bytes, 1, f);
+	fprintf(stderr, "\nProgramming device %d/%d, bitstream length (%d)\n",(nDevices-deviceNr),nDevices,n_bytes);
+
+    // The first word is a dummy...
+	for(n = 0; n < 4; n++)
+    {
+        if (buffer[n] != 0xFF)
 		{
 			fprintf(stderr, "\nError in bitfile, no Dummy Word at start");
 			exit(1);
 		}
-		send_byte(tempChar, ( n==(bitfileinfo.Bitstream_Length-1) ) );
-		if((bitcount % (256 * 1024)) == 0) putc('*', stderr);
-		bitcount += 8;
+    }
+
+    // Now send all the data except the last byte. Separate this, because
+    // the intermediate bytes don't need a tms strobe at their end
+	for(n = 4; n < n_bytes-1; n++) //send all but the last byte
+	{
+	    send_byte_no_tms(buffer[n]);
+		if((n % 1048576) == 0)
+        {
+            fprintf(stdout,"%.2f complete\n",(100.*n)/n_bytes);
+        }
 	}
+
+    // send last byte with a tms strobe on the final bit
+    send_byte(buffer[n++],1);
+
 	//Last bit has TMS 1, so we are in EXIT-DR
-	fprintf(stderr, "\nProgrammed %d bits, n==%d\n", bitcount,n);
+	fprintf(stderr, "\nProgrammed %d bytes", n);
 	send_cmd(0,1); // -> UPDATE-DR
 	send_cmd(0,1); // -> SELECT DR SCAN
 	send_cmd(0,1); // -> SELECT IR SCAN
@@ -189,14 +182,6 @@ void ProgramDevice(int deviceNr, FILE *f)
 	send_cmd(0,1); //->UPDATE IR
 	for(n=0;n<16;n++) send_cmd(0,0); //Go to Run-Test, and idle for 12+ clocks to start
 
-	if((parms & 0x01) == 0x01) checkStatusReg();
-
-	if((parms & 0x01) == 0x01)
-	{
-		checkUserId(1);
-		for(n=0;n<5;n++) send_cmd(0,1);
-		send_cmd(0,0);
-	}
 }
 
 void checkUserId(int x)

@@ -32,48 +32,39 @@
 
 int CountDevices()
 {
-	if((parms & 0x01) == 0x01)
-		fprintf(stderr,"Counting devices\n");
-
 	int tIRLen = 0;
-	syncJTAGs();
 	SelectShiftIR();
 
 	for(x=0;x<MAX_CHAIN;x++) send_cmd(1,0); //Flush IR Registers, makes sure counting IR-Reg Size is currect
 	
 	for(i=0;i<MAX_CHAIN;i++)
- 	{
-		x = send_cmd(0,0);
+	{
+        x = read_jtag_tdo();
+		send_cmd(0,0);
 		if(!x) break;
 		tIRLen++;
 	}
 
-	if(tIRLen != IRTotalRegSize)
-		fprintf(stderr,"\nERROR IR SIZE FROM BSDL MISMATCH FROM JTAG\n");
+    fprintf(stdout,"IR size from jtag: %d\n",tIRLen);
 
 	for(x=0;x<MAX_CHAIN;x++) send_cmd(1,0); //PUT all in BYPASS
-	
-	ExitShift(); //Shift-IR (TMS)-> Exit1-IR (TMS) -> Update-IR (TMS) -> Select DR-Scan
+    send_cmd(1,1);
+	ExitShift(); // state returns to IDLE
+
 	SelectShiftDR();
 
 	for(x=0;x<MAX_CHAIN;x++) send_cmd(0,0); //Flush DR register, used during debug
 
-	if((parms & 0x01) == 0x01)
-		fprintf(stderr,"FLUSH DR\n");
-
-	for(x=0;x<tIRLen;x++) //put in 1's into DR, when TDO outputs a 1, end is reached
+	for(x=0;x<tIRLen+1;x++) //put in 1's into DR, when TDO outputs a 1, end is reached
 	{
-		i = send_cmd(1,0);
+		i = read_jtag_tdo();
+		send_cmd(1,0);
 		if(i) break;
 	}
 
-	if(x==tIRLen) x = 0; //if x reaches max most likely a error ocurred!
+	if(x==tIRLen+1) x = 0; //if x reaches max an error occured
 
-	if((parms & 0x01) == 0x01)
-		fprintf(stderr,"(IR REG SIZE:(0's) %d vs (1's) %d)\n",i,tIRLen);
-
-	fprintf(stderr,"Devices found: %d\n",x);
-	ExitShift();
+    syncJTAGs();
 	return x;
 }
 
@@ -83,9 +74,9 @@ void help()
 	fprintf(stderr,
 	"Usage: rpjtag [options]\n"
 	"   -h      Print help\n"
-	"	-D	    Debug info\n"
-	"	-b		use BDSL file(s) use , as between multiple files\n"
-	"			only needed if program doesn't know IDCODE->BDSL file\n"
+	"   -D	    Debug info\n"
+	"   -b      use BDSL file(s) use , as between multiple files\n"
+	"	    only needed if program doesn't know IDCODE->BDSL file\n"
 	"\n");
 }
 
@@ -102,11 +93,11 @@ void setup_io()
 	
 	/* mmap GPIO */
 	gpio_map = mmap(
-		NULL,             //Any adddress in our space will do
-		BLOCK_SIZE,       //Map length
+		NULL,                //Any adddress in our space will do
+		BLOCK_SIZE,          //Map length
 		PROT_READ|PROT_WRITE,// Enable reading & writting to mapped memory
-		MAP_SHARED,       //Shared with other processes
-		mem_fd,           //File to map
+		MAP_SHARED,          //Shared with other processes
+		mem_fd,              //File to map
 	GPIO_BASE);
 
 	   close(mem_fd); //No need to keep mem_fd open after mmap
@@ -125,24 +116,27 @@ void setup_io()
 	INP_GPIO(JTAG_TDO); //Receive output from Device to rpi
 
 	nop_sleep(WAIT);
+
 	if((parms & 0x01) == 0x01)
-		fprintf(stderr,"INITIAL PORT STATUS TMS %d, TCK %d, TDI %d, TDO %d\n",GPIO_READ(JTAG_TMS),GPIO_READ(JTAG_TCK),GPIO_READ(JTAG_TDI),GPIO_READ(JTAG_TDO));	
+    {
+		    fprintf(stderr,"INITIAL PORT STATUS TMS %d, TCK %d, TDI %d, TDO %d\n",GPIO_READ(JTAG_TMS),GPIO_READ(JTAG_TCK),GPIO_READ(JTAG_TDI),GPIO_READ(JTAG_TDO));	
+    }
 	
 	OUT_GPIO(JTAG_TDI); //Send data from rpi to Device
 	OUT_GPIO(JTAG_TMS);
 	OUT_GPIO(JTAG_TCK);
+	nop_sleep(WAIT);
 
 	if((parms & 0x01) == 0x01)
+    {
 		fprintf(stderr,"READY PORT STATUS TMS %d, TCK %d, TDI %d, TDO %d\n",GPIO_READ(JTAG_TMS),GPIO_READ(JTAG_TCK),GPIO_READ(JTAG_TDI),GPIO_READ(JTAG_TDO));	
+    }
 
-
-	nop_sleep(WAIT);
 }
 
 int main(int argc, char *argv[])
 {
-	char *ifile  = "demo.bit";
-	char *bdslfiles = "xc3s200ft256.bsd,xcf01s.bsd";
+	char *ifile  = "top.bit";
 	int opt;
 	nDevices = 0;
 	parms = 0;
@@ -151,7 +145,7 @@ int main(int argc, char *argv[])
 	
 	fprintf(stderr, "Raspberry Pi JTAG Programmer, v0.3 (April 2013)\n\n");
 
-	while ((opt = getopt(argc, argv, "hDi:b:")) != -1) {
+	while ((opt = getopt(argc, argv, "hDi:")) != -1) {
 		switch (opt) {
 		case 'h':
 			help();
@@ -161,9 +155,6 @@ int main(int argc, char *argv[])
 			break;
 		case 'i':
 			ifile = optarg;
-			break;
-		case 'b':
-			bdslfiles = optarg;
 			break;
 		default:
 			fprintf(stderr, "\n");
@@ -180,42 +171,29 @@ int main(int argc, char *argv[])
 		parms |= 0x01;
 	#endif
 
-	load_bdsl_files(bdslfiles);
-
 	FILE* bitstream = load_bit_file(ifile);
 
-	//Check if bdsl file for bitfile device exists
-	for(i=0;i<fileCounter+1;i++)
-	{
-		if(0==memcmp(device_data[i].DeviceName,bitfileinfo.DeviceName,sizeof(bitfileinfo.DeviceName)))
-		{
-			deviceDataNr=i;
-			break;
-		}
-	}
-    //deviceDataNr now points at the BSDL Device data to use
-
-	if(i == fileCounter)
-	{ fprintf(stderr,"Bitfile information did not find match in BDSL files"); exit(1); }
-
 	// Set up gpi pointer for direct register access
+    fprintf(stdout, "setting up IO\n");
 	setup_io();
 
 	//rpjtag_stateMachine.c
+    fprintf(stdout, "sync-ing JTAG\n");
 	syncJTAGs(); //Puts all JTAG Devices in RESET MODE
 	
+    fprintf(stdout, "Counting devices\n");
 	nDevices = CountDevices(); //Count Number of devices, also finds total IR size
-	//rpjtag_io.h
-	readIDCODES(); //Reads the IDCODE's from Devices also sets deviceChainNr if IDCODE matches
+    fprintf(stdout,"Devices found: %d\n", nDevices);
 
-	fprintf(stderr,"\n");
-	if((parms & 0x01) == 0x01)
-		fprintf(stderr,"nDevice: %d, deviceDataNr: %d, deviceChainNr: %d",nDevices,deviceDataNr,deviceChainNr);
+    if (nDevices != 1)
+    {
+        fprintf(stderr, "nDevices > 1, add some code so I know what to do!");
+    }
 
 	if(nDevices != 0)
 	{
 		//rpjtag_bit_reader.c
-		ProgramDevice(deviceChainNr,bitstream); 
+		ProgramDevice(0,bitstream); 
 	}
 	fclose(bitstream);
 

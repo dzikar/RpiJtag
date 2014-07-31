@@ -3,11 +3,15 @@
 
 #define BCM2708_PERI_BASE        0x20000000
 #define GPIO_BASE                (BCM2708_PERI_BASE + 0x200000) /* GPIO controller */
+#define XILINX_BITFILE 1
 
 #define PAGE_SIZE (4*1024)
 #define BLOCK_SIZE (4*1024)
 
-#define MAX_CHAIN 199
+#define MAX_CHAIN 50
+//device position in JTAG chain. Number from 0
+#define DEVICE_NUM 0
+#define IRLEN 6
 
 int  mem_fd;
 void *gpio_map;
@@ -29,38 +33,15 @@ volatile unsigned *gpio;
 #define JTAG_TMS 9 //MISO 	PI ---> JTAG
 #define JTAG_TDI 7 //CE1 	PI ---> JTAG
 #define JTAG_TDO 8 //CE0 	PI <--- JTAG
-#define JTAG_TCK 4 //#4 	PI ---> JTAG
+#define JTAG_TCK 11 //#4 	PI ---> JTAG
 
 //-D DEBUG when compiling, will make all sleeps last 0.5 second, this can be used to test with LED on ports, or pushbuttons
 //Else sleeps can be reduced to increase speed
 #ifdef DEBUG
-#define WAIT 500000000 //aprox 0.5s
+#define WAIT 10000000 //aprox 0.5s
 #else
-#define WAIT 125 //aprox 0.5us
+#define WAIT 10000 //aprox 0.5us
 #endif
-
-//For State Machine
-#define JTAG_AUTO			0x000 // 0000 0000 0000 //0
-#define JTAG_RESET			0x001 // 0000 0000 0001 //1
-#define JTAG_IDLE			0x002 // 0000 0000 0010 //2
-
-#define JTAG_DR_SCAN		0x003 // 0000 0000 0011 //3
-#define JTAG_DR_CAPTURE		0x011 // 0000 0001 0001 //17
-#define JTAG_DR_SHIFT		0x012 // 0000 0001 0010 //18
-#define JTAG_DR_EXIT1		0x013 // 0000 0001 0011 //19
-#define JTAG_DR_PAUSE		0x014 // 0000 0001 0100 //20
-#define JTAG_DR_EXIT2		0x015 // 0000 0001 0101 //21
-#define JTAG_DR_UPDATE		0x016 // 0000 0001 0110 //22
-
-#define JTAG_IR_SCAN		0x004 // 0000 0000 0100 //4
-#define JTAG_IR_CAPTURE		0x101 // 0001 0000 0001 //257
-#define JTAG_IR_SHIFT		0x102 // 0001 0000 0010 //258
-#define JTAG_IR_EXIT1		0x103 // 0001 0000 0011 //259
-#define JTAG_IR_PAUSE		0x104 // 0001 0000 0100 //260
-#define JTAG_IR_EXIT2		0x105 // 0001 0000 0101 //261
-#define JTAG_IR_UPDATE		0x106 // 0001 0000 0110 //262
-
-#define XILINX_BITFILE 1
 
 int n, x, i, temp, IRTotalRegSize, jtag_state, nDevices, parms, bitFileId, fileCounter,deviceDataNr, deviceChainNr;
 
@@ -101,7 +82,9 @@ struct bitFileInfo
 //struct bitFileInfo bitfileinfo;
 
 void ProgramDevice(int deviceNr, FILE *f);
-void send_byte(unsigned char byte, int lastByte);
+void send_byte(unsigned char byte, int lastbyte);
+void send_byte_no_tms(unsigned char byte);
+void send_last_byte(unsigned char byte);
 void read_bdsl_file(char *filename, int fileNr);
 void load_bdsl_files(char *bdslfiles);
 FILE* load_bit_file(char *ifile);
@@ -111,7 +94,7 @@ void parse_header();
 void UpdateState(int j_state, int iTMS);
 void nop_sleep(long x);
 int read_jtag_tdo();
-int send_cmd(int iTDI,int iTMS);
+void send_cmd(int iTDI,int iTMS);
 void send_cmdWord_msb_first(unsigned int cmd, int lastBit, int bitoffset);
 void send_cmdWord_msb_last(unsigned int cmd, int lastBit, int bitoffset);
 void syncJTAGs();
