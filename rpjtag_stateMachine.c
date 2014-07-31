@@ -26,12 +26,12 @@
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <unistd.h>
-#include "rpjtag.h"
+#include "rpjtag_io.h"
+
+int i;
 
 void syncJTAGs()
 {
-    GPIO_CLR(JTAG_TCK);
-    GPIO_CLR(JTAG_TCK);
     for(i=0;i<5;i++) // reset JTAG chain
     {
         send_cmd(0,1);

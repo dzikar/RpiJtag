@@ -27,6 +27,8 @@
 #include <sys/mman.h>
 #include <unistd.h>
 #include "rpjtag.h" //Defines
+#include "rpjtag_stateMachine.h"
+#include "rpjtag_io.h"
 
 FILE* load_bit_file(char *ifile)
 {

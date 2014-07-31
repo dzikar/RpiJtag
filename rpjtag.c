@@ -17,18 +17,16 @@
  *
  */
 
-#include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include <stdint.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <fcntl.h>
-#include <sys/mman.h>
 #include <unistd.h>
-#include "rpjtag.h" //Defines
+#include "rpjtag.h"    //Defines
 #include "rpjtag_io.h" //Basic IO functions
+#include "rpjtag_stateMachine.h"
+#include "rpjtag_bit_reader.h"
 
 int CountDevices()
 {
@@ -80,59 +78,6 @@ void help()
 	"\n");
 }
 
-//
-// Set up a memory regions to access GPIO
-//
-void setup_io()
-{
-	/* open /dev/mem */
-	if ((mem_fd = open("/dev/mem", O_RDWR|O_SYNC) ) < 0) {
-		printf("can't open /dev/mem \n");
-	exit(-1);
-	}
-	
-	/* mmap GPIO */
-	gpio_map = mmap(
-		NULL,                //Any adddress in our space will do
-		BLOCK_SIZE,          //Map length
-		PROT_READ|PROT_WRITE,// Enable reading & writting to mapped memory
-		MAP_SHARED,          //Shared with other processes
-		mem_fd,              //File to map
-	GPIO_BASE);
-
-	   close(mem_fd); //No need to keep mem_fd open after mmap
-	
-	   if (gpio_map == MAP_FAILED) {
-	      printf("mmap error %d\n", (int)gpio_map);
-	      exit(-1);
-	   }
-	
-	   // Always use volatile pointer!
-	   gpio = (volatile unsigned *)gpio_map;
-	
-	INP_GPIO(JTAG_TCK);
-	INP_GPIO(JTAG_TMS);
-	INP_GPIO(JTAG_TDI);
-	INP_GPIO(JTAG_TDO); //Receive output from Device to rpi
-
-	nop_sleep(WAIT);
-
-	if((parms & 0x01) == 0x01)
-    {
-		    fprintf(stderr,"INITIAL PORT STATUS TMS %d, TCK %d, TDI %d, TDO %d\n",GPIO_READ(JTAG_TMS),GPIO_READ(JTAG_TCK),GPIO_READ(JTAG_TDI),GPIO_READ(JTAG_TDO));	
-    }
-	
-	OUT_GPIO(JTAG_TDI); //Send data from rpi to Device
-	OUT_GPIO(JTAG_TMS);
-	OUT_GPIO(JTAG_TCK);
-	nop_sleep(WAIT);
-
-	if((parms & 0x01) == 0x01)
-    {
-		fprintf(stderr,"READY PORT STATUS TMS %d, TCK %d, TDI %d, TDO %d\n",GPIO_READ(JTAG_TMS),GPIO_READ(JTAG_TCK),GPIO_READ(JTAG_TDI),GPIO_READ(JTAG_TDO));	
-    }
-
-}
 
 int main(int argc, char *argv[])
 {
@@ -197,7 +142,7 @@ int main(int argc, char *argv[])
 	}
 	fclose(bitstream);
 
-	munmap(gpio_map,BLOCK_SIZE);
+    close_io();
 	printf("\nDone\n");
 	exit(0);
 }

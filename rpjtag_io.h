@@ -1,137 +1,46 @@
-int read_jtag_tdo()
-{
-    return ( GPIO_READ(JTAG_TDO) ) ? 1 : 0;
-}
+#ifdef RPJTAG_IO_H
+#else
 
-int tdi=-1;
+#define PAGE_SIZE (4*1024)
+#define BLOCK_SIZE (4*1024)
 
-void send_cmd_no_tms(int iTDI)
-{
-    if(iTDI == 0)
-    {
-      if (tdi != 0)
-      {
-          GPIO_CLR(JTAG_TDI);
-          tdi = 0;
-      }
-    }
-    else
-    {
-        if (tdi != 1)
-        {
-            GPIO_SET(JTAG_TDI);
-            tdi = 1;
-        }
-    }
+#define BCM2708_PERI_BASE        0x20000000
+#define GPIO_BASE                (BCM2708_PERI_BASE + 0x200000) /* GPIO controller */
 
-    //nop_sleep(WAIT);
-    GPIO_SET(JTAG_TCK);
-    //nop_sleep(WAIT);
-    GPIO_CLR(JTAG_TCK);
-    //nop_sleep(WAIT);
-}
+// GPIO setup macros. Always use INP_GPIO(x) before using OUT_GPIO(x) or SET_GPIO_ALT(x,y)
+#define INP_GPIO(g) *(gpio+((g)/10)) &= ~(7<<(((g)%10)*3))
+#define OUT_GPIO(g) *(gpio+((g)/10)) |=  (1<<(((g)%10)*3))
+#define SET_GPIO_ALT(g,a) *(gpio+(((g)/10))) |= (((a)<=3?(a)+4:(a)==4?3:2)<<(((g)%10)*3))
 
-void send_cmd(int iTDI,int iTMS)
-{
-    
-    if(iTDI == 1)
-    {
-        GPIO_SET(JTAG_TDI);
-        tdi = 1;
-    }
-    else
-    {
-        GPIO_CLR(JTAG_TDI);
-        tdi = 0;
-    }
+#define GPIO_SET(g) *(gpio+7) = 1<<(g) // sets   bits which are 1 ignores bits which are 0
+#define GPIO_CLR(g) *(gpio+10) = 1<<(g) // clears bits which are 1 ignores bits which are 0
+#define GPIO_READ(g) (*(gpio+13) >> (g)) & 0x00000001
+#define GPIO_READRAW *(gpio+13)
 
-    if(iTMS == 1)
-    {
-        GPIO_SET(JTAG_TMS);
-    }
-    else
-        GPIO_CLR(JTAG_TMS);
+//Perspective is from Device connected, so TDO is output from device to input into rpi
+#define JTAG_TMS 9 //MISO 	PI ---> JTAG
+#define JTAG_TDI 7 //CE1 	PI ---> JTAG
+#define JTAG_TDO 8 //CE0 	PI <--- JTAG
+#define JTAG_TCK 11 //#4 	PI ---> JTAG
 
-    //nop_sleep(WAIT);
-    GPIO_SET(JTAG_TCK);
-    //nop_sleep(WAIT);
-    GPIO_CLR(JTAG_TCK);
-    //nop_sleep(WAIT);
-}
+//-D DEBUG when compiling, will make all sleeps last 0.5 second, this can be used to test with LED on ports, or pushbuttons
+//Else sleeps can be reduced to increase speed
+#ifdef DEBUG
+#define WAIT 10000000 //aprox 0.5s
+#else
+#define WAIT 10000 //aprox 0.5us
+#endif
 
-//Mainly used for command words (CFG_IN)
-void send_cmdWord_msb_first(unsigned int cmd, int lastBit, int bitoffset) //Send data, example 0xFFFF,0,20 would send 20 1's, with not TMS
-{
-    while(bitoffset--)
-    {
-        int x = ( cmd >> bitoffset) & 0x01;
-        send_cmd(x,(lastBit==1 && bitoffset==0));
-    }
-}
+int setup_io();
+void close_io();
+int read_jtag_tdo();
+void send_cmd_no_tms(int iTDI);
+void send_cmd(int iTDI,int iTMS);
+void send_cmdWord_msb_first(unsigned int cmd, int lastBit, int bitoffset);
+void send_cmdWord_msb_last(unsigned int cmd, int lastBit, int bitoffset);
+void send_byte(unsigned char byte, int lastbyte);
+void send_byte_no_tms(unsigned char byte);
+void nop_sleep(long x);
+void jtag_read_data(char* data,int iSize);
 
-//Mainly used for IR Register codes
-void send_cmdWord_msb_last(unsigned int cmd, int lastBit, int bitoffset) //Send data, example 0xFFFF,0,20 would send 20 1's, with not TMS
-{
-    int i;
-    for(i=0;i<bitoffset;i++)
-    {
-        int x = ( cmd >> i ) & 0x01;
-        send_cmd(x,(lastBit==1 && bitoffset==i+1));
-    }
-}
-
-void send_byte(unsigned char byte, int lastbyte) //Send single byte, example from fgetc
-{
-    int x;
-        for(x=7;x>=0;x--)
-        {
-            send_cmd(byte>>x&0x01,( x==0) && (lastbyte==1));
-        }
-}
-
-void send_byte_no_tms(unsigned char byte)
-{
-    //int x;
-    //    for(x=7;x>=0;x--)
-    //    {
-    //        send_cmd_no_tms(byte>>x&0x01);
-    //    }
-    send_cmd_no_tms(byte&0x80);
-    send_cmd_no_tms(byte&0x40);
-    send_cmd_no_tms(byte&0x20);
-    send_cmd_no_tms(byte&0x10);
-    send_cmd_no_tms(byte&0x08);
-    send_cmd_no_tms(byte&0x04);
-    send_cmd_no_tms(byte&0x02);
-    send_cmd_no_tms(byte&0x01);
-}
-
-//Does a NOP call in BCM2708, and is meant to be run @ 750 MHz
-void nop_sleep(long x)
-{
-    while (x--) {
-        asm("nop");
-    }
-}
-
-void jtag_read_data(char* data,int iSize)
-{
-    if(iSize==0) return;
-    int bitOffset = 0;
-    memset(data,0,(iSize+7)/8);
-
-    iSize--;
-    while(iSize--)
-    {
-        temp = read_jtag_tdo();
-        send_cmd(0,0);
-        data[bitOffset/8] |= (temp << (bitOffset & 7));
-        bitOffset++;
-    }
-
-    temp = read_jtag_tdo(); //Read last bit, while also going to EXIT
-    send_cmd(0,1);
-    data[bitOffset/8] |= (temp << (bitOffset & 7));
-    send_cmd(0,1); //Go to UPDATE STATE
-    send_cmd(0,1); //Go to SELECT DR-SCAN
-}
+#endif
