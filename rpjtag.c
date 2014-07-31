@@ -72,10 +72,9 @@ void help()
 	fprintf(stderr,
 	"Usage: rpjtag [options]\n"
 	"   -h      Print help\n"
-	"   -D	    Debug info\n"
-	"   -b      use BDSL file(s) use , as between multiple files\n"
-	"	    only needed if program doesn't know IDCODE->BDSL file\n"
+	"   -i	    Specify bit file (default = 'top.bit')\n"
 	"\n");
+    exit(0);
 }
 
 
@@ -90,13 +89,10 @@ int main(int argc, char *argv[])
 	
 	fprintf(stderr, "Raspberry Pi JTAG Programmer, v0.3 (April 2013)\n\n");
 
-	while ((opt = getopt(argc, argv, "hDi:")) != -1) {
+	while ((opt = getopt(argc, argv, "hi:")) != -1) {
 		switch (opt) {
 		case 'h':
 			help();
-			break;
-		case 'D':
-			parms |= 0x01;
 			break;
 		case 'i':
 			ifile = optarg;
@@ -111,10 +107,6 @@ int main(int argc, char *argv[])
 
 	if(ifile == 0x00)
 		exit(0);
-
-	#ifdef DEBUG
-		parms |= 0x01;
-	#endif
 
 	FILE* bitstream = load_bit_file(ifile);
 

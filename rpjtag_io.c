@@ -15,6 +15,13 @@ void *gpio_map;
 // I/O access
 volatile unsigned *gpio;
 
+void tick_clk()
+{
+    GPIO_SET(JTAG_TCK);
+    //nop_sleep(WAIT);
+    GPIO_CLR(JTAG_TCK);
+}
+
 void close_io()
 {
     munmap(gpio_map, BLOCK_SIZE);
@@ -73,8 +80,6 @@ int tdi=-1;
 
 void send_cmd_no_tms(int iTDI)
 {
-    GPIO_CLR(JTAG_TCK);
-
     if(iTDI == 0)
     {
       if (tdi != 0)
@@ -99,10 +104,20 @@ void send_cmd_no_tms(int iTDI)
     //nop_sleep(WAIT);
 }
 
+//void set_pin(int pin, int val)
+//{
+//    if (val == 0)
+//    {
+//        GPIO_CLR(pin);
+//    }
+//    else
+//    {
+//        GPIO_SET(pin);
+//    }
+//}
+
 void send_cmd(int iTDI,int iTMS)
 {
-    GPIO_CLR(JTAG_TCK);
-    
     if(iTDI == 1)
     {
         GPIO_SET(JTAG_TDI);
@@ -122,10 +137,14 @@ void send_cmd(int iTDI,int iTMS)
         GPIO_CLR(JTAG_TMS);
 
     //nop_sleep(WAIT);
-    GPIO_SET(JTAG_TCK);
+    tick_clk();
     //nop_sleep(WAIT);
+}
+
+
+void reset_clk()
+{
     GPIO_CLR(JTAG_TCK);
-    //nop_sleep(WAIT);
 }
 
 //Mainly used for command words (CFG_IN)

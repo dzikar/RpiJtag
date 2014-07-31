@@ -1,5 +1,12 @@
-#ifdef RPJTAG_IO_H
-#else
+#ifndef RPJTAG_IO_H
+#define RPJTAG_IO_H
+
+#include <stdlib.h>
+#include <sys/mman.h>
+#include <stdio.h>
+#include <fcntl.h>
+#include <string.h>
+#include <unistd.h>
 
 #define PAGE_SIZE (4*1024)
 #define BLOCK_SIZE (4*1024)
@@ -33,6 +40,7 @@
 
 int setup_io();
 void close_io();
+void reset_clk();
 int read_jtag_tdo();
 void send_cmd_no_tms(int iTDI);
 void send_cmd(int iTDI,int iTMS);

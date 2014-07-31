@@ -17,6 +17,8 @@
  *
  */
 
+#include "rpjtag_stateMachine.h"
+#include "rpjtag_io.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -26,12 +28,12 @@
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <unistd.h>
-#include "rpjtag_io.h"
 
 int i;
 
 void syncJTAGs()
 {
+    reset_clk(); //in case clock is currently high
     for(i=0;i<5;i++) // reset JTAG chain
     {
         send_cmd(0,1);

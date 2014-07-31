@@ -17,14 +17,12 @@
  *
  */
 
+#include "rpjtag_bit_reader.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
-#include <sys/types.h>
-#include <sys/stat.h>
 #include <fcntl.h>
-#include <sys/mman.h>
 #include <unistd.h>
 #include "rpjtag.h" //Defines
 #include "rpjtag_stateMachine.h"
@@ -52,7 +50,7 @@ void checkStatusReg()
 	unsigned int NOOP = 0x20000000;
 	unsigned int SYNCWORD = 0xAA995566;
 	unsigned int STATUS_REG = 0x2800E002;
-    int v;
+    int v, n;
 	
 	syncJTAGs();
 	SelectShiftIR();
@@ -120,7 +118,7 @@ void ProgramDevice(int deviceNr, FILE *f)
 	send_cmd(0,0); // -> SHIFT DR
 
 
-	int n;
+	int n, x;
     int n_bytes = bitfileinfo.Bitstream_Length; // this is in bytes
     unsigned char *buffer;
     buffer = (unsigned char *)malloc(n_bytes);
@@ -165,13 +163,11 @@ void ProgramDevice(int deviceNr, FILE *f)
 	{
 		if((nDevices-deviceNr)==x)
 		{
-			if((parms & 0x01) == 0x01) fprintf(stderr,"\nDebug %d 0x0C: %d, %s",x,device_data[deviceNr].dIRLen,device_data[deviceNr].DeviceName);
 			if((x-1)==0) //To check is MSB in chain is sent with this cmd
 				send_cmdWord_msb_last(0x0C,1,device_data[deviceNr].dIRLen);
 			else
 				send_cmdWord_msb_last(0x0C,0,device_data[deviceNr].dIRLen);
 		}else{	
-			if((parms & 0x01) == 0x01) fprintf(stderr,"\nDebug %d 0xFF: %d, %s",x,device_data[x].dIRLen,device_data[x].DeviceName);
 			if((x-1)==0) //To check is MSB in chain is sent with this cmd
 				send_cmdWord_msb_last(0xFFFFF,1,device_data[x].dIRLen);//Bypass max, 20bit register
 			else
@@ -217,8 +213,6 @@ int GetSegmentLength(int segment, int segmentCheck, FILE *f)
 	{
 		fprintf(stderr, "Error in header segment: %d, should be %d\n",segment,segmentCheck);
 		exit(1);
-	}else if((parms & 0x01) == 0x01) {
-		fprintf(stderr, "Segment: %c\n",(char)segment); //For Debuging
 	}
 
 	return ((fgetc(f) << 8) + fgetc(f)); //Lenght of segment
@@ -240,7 +234,7 @@ void parse_header(FILE *f)
 
 	//First 13 bits, so far all Xilinx Bitstream files, start with XilinxID13 bytes
 	//Seems to be identifier for bitfile creator
-	int t;
+	int t, x;
 	HeaderBufferData = (unsigned int*)malloc( sizeof(unsigned int) *13);
 	for(t=0;t<13;t++) HeaderBufferData[t] = fgetc(f);
 
@@ -306,8 +300,6 @@ void parse_header(FILE *f)
 //----------------------------------------------------------------------
 	segment = fgetc(f);
 	if(segment != segmentCheck)	fprintf(stderr, "Error in header segment: %d, should be %d\n",segment,segmentCheck);
-	if((parms & 0x01) == 0x01)
-		fprintf(stderr, "Segment: %c\n",(char)segment); //For Debuging
 	segmentLength = (fgetc(f) << 24) + (fgetc(f) << 16) + (fgetc(f) << 8) + fgetc(f);
 	fprintf(stderr, "Bitstream Length: %0d bits\n", segmentLength * 8);
 	bitfileinfo.Bitstream_Length = segmentLength;
