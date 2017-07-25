@@ -12,3 +12,4 @@ See more on http://www.Krelian.dk
 =======================
 
 Modified 30 July 2014. Jack Hickish
+Modified 26.07.2017 KDI "dzikar"
